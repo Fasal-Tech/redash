@@ -4,7 +4,11 @@ compose_build: .env
 	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker compose build
 
 up:
-	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker compose up -d --build
+	docker compose up -d redis postgres --remove-orphans
+	docker compose exec -u postgres postgres psql postgres --csv \
+		-1tqc "SELECT table_name FROM information_schema.tables WHERE table_name = 'organizations'" 2> /dev/null \
+		| grep -q "organizations" || make create_database
+	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker compose up -d --build --remove-orphans
 
 test_db:
 	@for i in `seq 1 5`; do \
@@ -17,7 +21,16 @@ create_database: .env
 	docker compose run server create_db
 
 clean:
-	docker compose down && docker compose rm
+	docker compose down
+	docker compose --project-name cypress down
+	docker compose rm --stop --force
+	docker compose --project-name cypress rm --stop --force
+	docker image rm --force \
+		cypress-server:latest cypress-worker:latest cypress-scheduler:latest \
+		redash-server:latest redash-worker:latest redash-scheduler:latest
+	docker container prune --force
+	docker image prune --force
+	docker volume prune --force
 
 down:
 	docker compose down
